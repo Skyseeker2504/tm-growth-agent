@@ -60,4 +60,18 @@ export async function markStatus(id, status, extra = {}) {
   return { id, status };
 }
 
+// add near the other exports in firestore.js
+
+export async function getFAQs() {
+  // Returns [] if collection empty / not created
+  const snapshot = await col('faqs').get();
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function upsertFAQ(id, data) {
+  // helper (not required now)
+  await col('faqs').doc(id).set({ ...data, updatedAt: Date.now() }, { merge: true });
+  return { id, ok: true };
+}
+
 export default { init, col, markStatus };
