@@ -1,4 +1,3 @@
-// src/server.js
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
@@ -13,19 +12,15 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '2mb' }));
 
-// Health
 app.get('/', (_req, res) => res.send('OK'));
 app.get('/health', (_req, res) => res.json({ ok: true, time: Date.now() }));
 
-// Engage (safe router)
 app.use('/engage', engageRouter);
 
-// One-shot endpoints
 app.post('/plan', async (req, res) => {
   try {
-    // your plan.js should accept { inputs }, or use req.body directly if coded that way
     const count = await doPlanning({ inputs: req.body || {} });
-    res.json({ planned: count, ok: true });
+    res.json({ ok: true, planned: count });
   } catch (e) {
     console.error('PLAN error', e);
     res.status(500).json({ ok: false, error: String(e.message || e) });

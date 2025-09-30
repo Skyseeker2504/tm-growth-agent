@@ -1,11 +1,7 @@
-// src/dataAdapters/firestore.js
 import { Firestore } from '@google-cloud/firestore';
 
 let db;
 
-/**
- * Initialize Firestore from FIREBASE_JSON explicitly (no auto-detect).
- */
 function init() {
   if (db) return db;
 
@@ -22,10 +18,7 @@ function init() {
   const { client_email, private_key } = sa;
   if (!client_email || !private_key) throw new Error('Service account JSON must include client_email and private_key.');
 
-  db = new Firestore({
-    projectId,
-    credentials: { client_email, private_key },
-  });
+  db = new Firestore({ projectId, credentials: { client_email, private_key } });
 
   process.env.GCLOUD_PROJECT = projectId;
   process.env.GOOGLE_CLOUD_PROJECT = projectId;
@@ -36,11 +29,7 @@ export function col(name) {
   return init().collection(name);
 }
 
-/**
- * saveCalendar(items)
- * Writes/merges an array of calendar items into 'calendar' collection.
- * Each item gets an id if missing. Returns count written.
- */
+/** Writes an array of items into 'calendar' (merge). Returns count. */
 export async function saveCalendar(items = []) {
   const database = init();
   const batch = database.batch();
@@ -49,33 +38,27 @@ export async function saveCalendar(items = []) {
   for (const it of items) {
     const id = it.id || col('calendar').doc().id;
     const ref = col('calendar').doc(id);
-    batch.set(
-      ref,
-      {
-        id,
-        status: it.status || 'planned',
-        scheduledAt: it.scheduledAt ?? now,
-        payload: it.payload || {},
-        link: it.link || null,
-        image_url: it.image_url || null,
-        updatedAt: now,
-      },
-      { merge: true }
-    );
+    batch.set(ref, {
+      id,
+      status: it.status || 'planned',
+      scheduledAt: it.scheduledAt ?? now,
+      payload: it.payload || {},
+      link: it.link || null,
+      image_url: it.image_url || null,
+      updatedAt: now
+    }, { merge: true });
   }
-
   await batch.commit();
   return items.length;
 }
 
-/** markStatus(id, status, extra?) */
 export async function markStatus(id, status, extra = {}) {
   const ref = col('calendar').doc(id);
   await ref.set({ id, status, updatedAt: Date.now(), ...extra }, { merge: true });
   return { id, status };
 }
 
-/** FAQs helpers so engage.js can import safely */
+/** For engage webhook */
 export async function getFAQs() {
   const snapshot = await col('faqs').get();
   return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));

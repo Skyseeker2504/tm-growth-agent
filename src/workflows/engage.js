@@ -1,11 +1,10 @@
-// src/workflows/engage.js
 import express from 'express';
 import { replyToComment } from '../meta.js';
 import { getFAQs } from '../dataAdapters/firestore.js';
 
 export const engageRouter = express.Router();
 
-// Simple webhook verification for Meta
+// Meta webhook verification
 engageRouter.get('/webhook', (req, res) => {
   const VERIFY_TOKEN = 'tm_webhook_token';
   const mode = req.query['hub.mode'];
@@ -15,23 +14,19 @@ engageRouter.get('/webhook', (req, res) => {
   return res.sendStatus(403);
 });
 
-// Minimal example handler (comment auto-reply)
 engageRouter.post('/webhook', async (req, res) => {
   try {
     const body = req.body || {};
-    const text = (body.text || '').toLowerCase();
+    const text = String(body.text || '').toLowerCase();
     const faqs = await getFAQs();
     const found = faqs.find(f => text.includes(String(f.trigger || '').toLowerCase()));
 
-    if (found) {
-      await replyToComment(body.commentId, found.reply);
-    } else {
-      const fallback = `Thanks! Tell us your category & state. We'll DM a free sample.\n${process.env.WHATSAPP_DEEPLINK || ''}`.trim();
-      await replyToComment(body.commentId, fallback);
+    const reply = found?.reply || `Thanks! Tell us your category & state. We'll DM a free sample.\n${process.env.WHATSAPP_DEEPLINK || ''}`.trim();
+    if (body.commentId) {
+      await replyToComment(body.commentId, reply);
     }
     res.sendStatus(200);
   } catch (e) {
-    // Don't let webhook crash your app
     console.error('ENGAGE webhook error', e);
     res.sendStatus(200);
   }

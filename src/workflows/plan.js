@@ -1,18 +1,29 @@
-import { planCalendar } from '../ai.js';
+// Simple planner: seeds N items with daily schedule
 import { saveCalendar } from '../dataAdapters/firestore.js';
 
-export async function doPlanning({ inputs }) {
-  const plan = await planCalendar({ inputs });
-  // Add scheduling timestamps (9:30 & 18:30 IST) for next 30 days
-  const base = Date.now();
-  const dayMs = 24*60*60*1000;
-  const IST = 5.5*60*60*1000;
-  const scheduled = plan.map((item, i) => {
-    const date = new Date(base + i*dayMs);
-    const times = [9.5, 18.5]; // hours local
-    const when = new Date(date.getFullYear(), date.getMonth(), date.getDate(), (i%2?18:9), (i%2?30:30)).getTime() - IST;
-    return { ...item, scheduledAt: when, status: 'planned' };
-  });
-  await saveCalendar(scheduled);
-  return scheduled.length;
+export async function doPlanning({ inputs = {} } = {}) {
+  const {
+    days = 7,
+    goal = 'Leads for trials/reports',
+    focus = ['Safes', 'AC', 'Electronics'],
+    states = ['MH', 'DL', 'GJ']
+  } = inputs;
+
+  const start = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  const items = Array.from({ length: days }).map((_, i) => ({
+    status: 'planned',
+    scheduledAt: start + i * dayMs,
+    link: 'https://tendermanagers.com/login',
+    payload: {
+      caption: `(${goal}) Day ${i + 1} — Focus: ${focus[i % focus.length]}, States: ${states.join(', ')}`,
+      hashtags: '#tenders #B2B #India'
+    },
+    image_url: null
+  }));
+
+  return await saveCalendar(items);
 }
+
+export default { doPlanning };
