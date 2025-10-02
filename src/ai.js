@@ -123,3 +123,66 @@ export async function reelScript({ topic, bullets }) {
     return fallbackReel({ topic, bullets });
   }
 }
+
+// 3a) Insight suggestions from a data profile
+export async function suggestInsights({ profile }) {
+  const sys = `You are a data product manager. Given table schemas, small samples and row counts,
+propose 1) key analysis opportunities, 2) 6-10 concrete NL questions a user can ask,
+3) 3-5 social content ideas with CTA. Only JSON.`;
+
+  const user = JSON.stringify({ profile }).slice(0, 120000);
+
+  const r = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.5,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: user }
+    ]
+  });
+
+  return JSON.parse(r.choices[0].message.content);
+}
+
+// 3b) NL → safe SQL generator + expectations
+export async function nl2sql({ prompt, profile }) {
+  const sys = `You convert natural language to SAFE DuckDB SQL over the provided profile.
+Rules:
+- Only SELECT queries. No INSERT/UPDATE/DELETE/CREATE/DROP.
+- Always add LIMIT 1000 unless user asks for exact counts only.
+- Prefer fields seen in schema/sample.
+- Return strict JSON: { "sql": "...", "reason": "...", "expects": [{"field":"", "type": ""}] }`;
+
+  const user = JSON.stringify({ prompt, profile }).slice(0, 120000);
+
+  const r = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: user }
+    ]
+  });
+
+  return JSON.parse(r.choices[0].message.content);
+}
+
+// (optional) turn result rows to a short caption/summary
+export async function summarizeRows({ title, rows }) {
+  const sys = `Summarize tabular results for a LinkedIn/FB post in India.
+Return JSON: { "caption": "...", "hashtags": "..."} (no markdown). Keep concise and numeric.`;
+  const user = JSON.stringify({ title, sample: rows.slice(0, 20) });
+
+  const r = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.6,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: user }
+    ]
+  });
+  return JSON.parse(r.choices[0].message.content);
+}

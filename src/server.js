@@ -8,6 +8,8 @@ import { generateContent } from './workflows/generate.js';
 import { queueForPublish, publishDue } from './workflows/schedule.js';
 import { draftEngagementAd } from './workflows/ads.js';
 import { askAndDraft } from "./workflows/nlpAsk.js";
+import { runDiscovery } from "./workflows/discover.js";
+import { askSQL } from "./workflows/askSql.js";
 
 const app = express();
 app.use(cors());
@@ -84,6 +86,26 @@ app.post("/ask", async (req, res) => {
   }
 });
 
+app.post("/discover", async (_req, res) => {
+  try {
+    const r = await runDiscovery({});
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    console.error("DISCOVER error", e);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+app.post("/ask-sql", async (req, res) => {
+  try {
+    const { prompt } = req.body || {};
+    const r = await askSQL(prompt || "show me something interesting from the latest month");
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    console.error("ASK-SQL error", e);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => console.log('TM Growth Agent running on', PORT));

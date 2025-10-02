@@ -63,3 +63,55 @@ export async function priceBenchmark(item, months=12) {
     GROUP BY 1 ORDER BY 1;
   `);
 }
+
+// ---- add below your existing qDuck/http ----
+
+// list tables
+export async function listTables() {
+  const rows = await qDuck(`
+    SELECT table_name AS name
+    FROM information_schema.tables
+    WHERE table_schema = 'main'
+    ORDER BY 1;
+  `);
+  return rows.map(r => r.name);
+}
+
+// describe columns of a table
+export async function tableSchema(table) {
+  return qDuck(`
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_name = '${table.replace(/'/g,"''")}'
+    ORDER BY ordinal_position;
+  `);
+}
+
+// quick stats per table (row count, recent date range if a date column exists)
+export async function quickStats(table) {
+  const t = table.replace(/'/g,"''");
+  // try to detect a likely date column
+  const cols = await qDuck(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name='${t}' AND lower(data_type) LIKE '%date%'
+    ORDER BY ordinal_position
+    LIMIT 1;
+  `);
+  const dateCol = cols[0]?.column_name;
+
+  const base = await qDuck(`SELECT COUNT(*) AS rows FROM "${t}";`);
+  let daterange = null;
+  if (dateCol) {
+    const r = await qDuck(`
+      SELECT MIN("${dateCol}") AS min_date, MAX("${dateCol}") AS max_date
+      FROM "${t}";
+    `);
+    daterange = r[0];
+  }
+
+  // sample first few rows for AI context (keep tiny)
+  const sample = await qDuck(`SELECT * FROM "${t}" LIMIT 5;`);
+
+  return { rows: base[0]?.rows || 0, dateCol, daterange, sample };
+}
