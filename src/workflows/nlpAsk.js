@@ -1,7 +1,7 @@
 // src/workflows/nlpAsk.js
 import { col } from "../dataAdapters/firestore.js";
 import { topCategories30, topStates60, servicesVsGoodsQuarter, priceBenchmark } from "../dataAdapters/dataExec.js";
-import { generateCaption, reelScript } from "../tenders.js";
+import { generateCaption, reelScript } from "../dataAdapters/tenders.js";
 
 function asINR(n){ return "₹" + Math.round(+n||0).toLocaleString("en-IN"); }
 
