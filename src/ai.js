@@ -1,84 +1,125 @@
 // src/ai.js
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+import OpenAI from "openai";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const MOCK = String(process.env.MOCK_OPENAI || "") === "1";
 
-// Always return { caption, hashtags }
-export async function generateCaption({ title = "", dataPoints = [] } = {}) {
-  // Simple local generator
-  const fallback = () => {
-    const bullets = (dataPoints || [])
-      .slice(0, 6)
-      .map(dp => {
-        if (typeof dp === "string") return `• ${dp}`;
-        if (dp && typeof dp === "object") {
-          const first = Object.entries(dp)[0] || [];
-          return `• ${first[0] ?? ""}: ${first[1] ?? ""}`;
-        }
-        return "• —";
-      })
-      .join("\n");
+function coerceJSON(txt) {
+  if (!txt) return null;
+  // try parse whole
+  try { return JSON.parse(txt); } catch {}
+  // try first {...} block
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  return null;
+}
 
-    const caption =
-`${title}
-
-${bullets}
-
-Start your 7-day trial: https://tendermanagers.com
-#tenders #GeM #CPPP #MSME #procurement`;
-
-    return { caption, hashtags: "#tenders #GeM #CPPP #MSME #procurement" };
+function fallbackCaption({ title = "", dataPoints = [] } = {}) {
+  const bullets = (dataPoints || []).slice(0, 6).map(dp => {
+    if (typeof dp === "string") return `• ${dp}`;
+    if (dp && typeof dp === "object") {
+      const [k, v] = Object.entries(dp)[0] || ["", ""];
+      return `• ${k}: ${v}`;
+    }
+    return "• —";
+  }).join("\n");
+  return {
+    caption: `${title}\n\n${bullets}\n\nStart your 7-day trial: https://tendermanagers.com`,
+    hashtags: "#tenders #GeM #CPPP #MSME #procurement"
   };
+}
 
-  // If no API key or mock enabled → fallback
-  if (MOCK || !OPENAI_API_KEY) return fallback();
+function fallbackReel({ topic = "", bullets = [] } = {}) {
+  return {
+    script: [`Hook: ${topic}`, ...(bullets || []).map(b => `• ${b}`), "CTA: Try a 7-day trial at tendermanagers.com"].join("\n")
+  };
+}
 
-  // Try OpenAI; if anything goes wrong, fallback safely.
+export async function planCalendar({ goal = "Grow to 5k followers & leads", inputs }) {
+  if (MOCK || !process.env.OPENAI_API_KEY) {
+    return Array.from({ length: 30 }, (_, i) => ({
+      day: i + 1, type: "image", title: `Day ${i + 1}: ${goal}`,
+      caption: `Progress update for "${goal}". Start your 7-day trial.`,
+      hashtags: "#tenders #GeM #CPPP #MSME #procurement",
+      cta: "Start trial", link: "https://tendermanagers.com", needsImage: false
+    }));
+  }
+
+  const user = `
+Goal: ${goal}
+Inputs: ${JSON.stringify(inputs).slice(0, 4000)}
+Constraints: B2B tone, India, 1–2 posts/day/platform, 3 stories/week, 1 reel/week, strong CTAs.
+Return STRICT JSON ONLY (no markdown): [{"day":1,"type":"carousel|image|reel|story","title":"...","caption":"...","hashtags":"...","cta":"...","link":"...","needsImage":true}]
+  `.trim();
+
   try {
-    const prompt =
-`You are a marketing copywriter. Create a short social caption in ~2-3 lines for the post TITLE and DATAPOINTS.
-Return STRICT JSON only: {"caption":"...","hashtags":"..."} with no markdown, no commentary.
-
-TITLE: ${title}
-DATAPOINTS:
-${(dataPoints || []).map(d => JSON.stringify(d)).join("\n")}
-CTA: Start a 7-day trial at tendermanagers.com
-Primary hashtags: #tenders #GeM #CPPP #MSME #procurement`;
-
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.5,
-        messages: [
-          { role: "system", content: "Respond with strict JSON. No markdown. No extra text." },
-          { role: "user", content: prompt }
-        ]
-      })
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: "Return STRICT JSON only. No markdown, no commentary." },
+        { role: "user", content: user }
+      ]
     });
+    const txt = res.choices?.[0]?.message?.content || "";
+    const parsed = coerceJSON(txt);
+    return Array.isArray(parsed) ? parsed : (() => { throw new Error("Bad JSON"); })();
+  } catch {
+    return Array.from({ length: 30 }, (_, i) => ({
+      day: i + 1, type: "image", title: `Day ${i + 1}: ${goal}`,
+      caption: `Progress update for "${goal}". Start your 7-day trial.`,
+      hashtags: "#tenders #GeM #CPPP #MSME #procurement",
+      cta: "Start trial", link: "https://tendermanagers.com", needsImage: false
+    }));
+  }
+}
 
-    if (!r.ok) {
-      // If you hit 429 etc., fall back
-      return fallback();
-    }
+export async function generateCaption({ title, dataPoints }) {
+  if (MOCK || !process.env.OPENAI_API_KEY) return fallbackCaption({ title, dataPoints });
 
-    const body = await r.json();
-    const txt = body?.choices?.[0]?.message?.content?.trim() || "";
-    // Model should have returned JSON. Parse defensively.
-    let parsed;
-    try {
-      parsed = JSON.parse(txt);
-    } catch {
-      return fallback();
-    }
+  const user = `
+Title: ${title}
+Data points: ${JSON.stringify(dataPoints)}
+Tone: Helpful, numbers-first, CTA to trial/reports.
+Return STRICT JSON ONLY (no markdown): {"caption":"...","hashtags":"..."}
+  `.trim();
 
-    if (!parsed || typeof parsed !== "object" || !parsed.caption) return fallback();
+  try {
+    const r = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: "Return STRICT JSON only. No markdown, no commentary." },
+        { role: "user", content: user }
+      ]
+    });
+    const txt = r.choices?.[0]?.message?.content || "";
+    const parsed = coerceJSON(txt) || fallbackCaption({ title, dataPoints });
+    if (!parsed.caption) return fallbackCaption({ title, dataPoints });
     if (!parsed.hashtags) parsed.hashtags = "#tenders #GeM #CPPP #MSME #procurement";
     return parsed;
   } catch {
-    return fallback();
+    return fallbackCaption({ title, dataPoints });
+  }
+}
+
+export async function reelScript({ topic, bullets }) {
+  if (MOCK || !process.env.OPENAI_API_KEY) return fallbackReel({ topic, bullets });
+
+  const user = `Topic: ${topic}\nBullets: ${(bullets || []).join(" | ")}\nReturn STRICT JSON ONLY (no markdown): {"script":"..."}`;
+
+  try {
+    const r = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.8,
+      messages: [
+        { role: "system", content: "Return STRICT JSON only. No markdown, no commentary." },
+        { role: "user", content: user }
+      ]
+    });
+    const txt = r.choices?.[0]?.message?.content || "";
+    const parsed = coerceJSON(txt);
+    return parsed?.script ? parsed : fallbackReel({ topic, bullets });
+  } catch {
+    return fallbackReel({ topic, bullets });
   }
 }
