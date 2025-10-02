@@ -2,13 +2,16 @@
   "name": "tm-growth-agent",
   "version": "1.0.0",
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/server.js",
     "worker": "node src/cron.js"
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.9.0",
+    "axios": "^1.12.2",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "express": "^4.19.2",
