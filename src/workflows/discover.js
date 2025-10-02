@@ -1,33 +1,37 @@
-// src/workflows/discover.js
 import { col } from "../dataAdapters/firestore.js";
 import { listTables, tableSchema, quickStats } from "../dataAdapters/dataExec.js";
 import { suggestInsights } from "../ai.js";
 
-export async function runDiscovery({ maxTables = 10 } = {}) {
-  const names = (await listTables()).slice(0, maxTables);
+export async function runDiscovery({ maxTables = 8 } = {}) {
+  const tables = (await listTables()).slice(0, maxTables);
 
   const profile = [];
-  for (const name of names) {
+  for (const name of tables) {
     try {
-      const schema = await tableSchema(name);    // returns [] on failure
-      const stats  = await quickStats(name);     // never throws
+      const schema = await tableSchema(name);
+      const stats  = await quickStats(name);   // may throw on some views
       profile.push({ table: name, schema, stats });
     } catch (e) {
-      // Shouldn’t hit due to guards, but just in case
-      profile.push({ table: name, schema: [], stats: { error: String(e?.message || e) } });
+      console.warn("[DISCOVER] Skipping table due to error:", name, String(e));
+      // keep going; one bad table shouldn’t break discovery
+      continue;
     }
   }
 
-  let suggestions = { ideas: [], questions: [], content: [] };
-  try {
-    suggestions = await suggestInsights({ profile });
-  } catch (e) {
-    console.warn("suggestInsights failed:", e?.message || e);
+  // If nothing usable, short-circuit with a friendly message
+  if (!profile.length) {
+    return { id: null, profileCount: 0, suggestions: { note: "No tables could be profiled." } };
   }
 
-  const ref = await col("catalog").add({
-    profile, suggestions, createdAt: Date.now()
+  // Ask AI for ideas (it returns strict JSON in our ai.js)
+  const suggestions = await suggestInsights({ profile });
+
+  // Save a snapshot for later reference
+  const catRef = await col("catalog").add({
+    profile,
+    suggestions,
+    createdAt: Date.now()
   });
 
-  return { id: ref.id, profileCount: profile.length, suggestions };
+  return { id: catRef.id, profileCount: profile.length, suggestions };
 }

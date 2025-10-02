@@ -86,15 +86,17 @@ app.post("/ask", async (req, res) => {
   }
 });
 
-app.post("/discover", async (_req, res) => {
+app.post("/discover", async (req, res) => {
   try {
-    const r = await runDiscovery({});
+    const { maxTables = 8 } = req.body || {};  // let caller limit the scan
+    const r = await runDiscovery({ maxTables });
     res.json({ ok: true, ...r });
   } catch (e) {
     console.error("DISCOVER error", e);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
+
 
 app.post("/ask-sql", async (req, res) => {
   try {
