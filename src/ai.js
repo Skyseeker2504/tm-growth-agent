@@ -1,45 +1,84 @@
-import OpenAI from 'openai';
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// src/ai.js
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const MOCK = String(process.env.MOCK_OPENAI || "") === "1";
 
-export async function planCalendar({ goal = 'Grow to 5k followers & leads', inputs }) {
-  const sys = `You are a B2B growth strategist for TenderManagers. Create a 30-day FB+IG calendar.`;
-  const user = `
-Goal: ${goal}
-Inputs: ${JSON.stringify(inputs).slice(0, 4000)}
-Constraints: B2B tone, India, 1–2 posts/day/platform, 3 stories/week, 1 reel/week, strong CTAs.
-Output JSON: [{day:1,type:"carousel|image|reel|story", title, caption, hashtags, cta, link, needsImage:true/false}] (30 items)
-`;
-  const res = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'system', content: sys }, { role: 'user', content: user }],
-    temperature: 0.7
-  });
-  return JSON.parse(res.choices[0].message.content);
-}
+// Always return { caption, hashtags }
+export async function generateCaption({ title = "", dataPoints = [] } = {}) {
+  // Simple local generator
+  const fallback = () => {
+    const bullets = (dataPoints || [])
+      .slice(0, 6)
+      .map(dp => {
+        if (typeof dp === "string") return `• ${dp}`;
+        if (dp && typeof dp === "object") {
+          const first = Object.entries(dp)[0] || [];
+          return `• ${first[0] ?? ""}: ${first[1] ?? ""}`;
+        }
+        return "• —";
+      })
+      .join("\n");
 
-export async function generateCaption({ title, dataPoints }) {
-  const sys = `You write concise, persuasive B2B captions for FB/IG.`;
-  const user = `
-Title: ${title}
-Data points: ${JSON.stringify(dataPoints)}
-Tone: Helpful, numbers-first, CTA to trial/reports.
-Return: { caption, hashtags }
-`;
-  const r = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'system', content: sys }, { role: 'user', content: user }],
-    temperature: 0.7
-  });
-  return JSON.parse(r.choices[0].message.content);
-}
+    const caption =
+`${title}
 
-export async function reelScript({ topic, bullets }) {
-  const sys = `You write 20s reel scripts with hook -> value -> CTA.`;
-  const user = `Topic: ${topic}\nBullets: ${bullets.join(' | ')}\nReturn JSON {script}`;
-  const r = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'system', content: sys }, { role: 'user', content: user }],
-    temperature: 0.8
-  });
-  return JSON.parse(r.choices[0].message.content);
+${bullets}
+
+Start your 7-day trial: https://tendermanagers.com
+#tenders #GeM #CPPP #MSME #procurement`;
+
+    return { caption, hashtags: "#tenders #GeM #CPPP #MSME #procurement" };
+  };
+
+  // If no API key or mock enabled → fallback
+  if (MOCK || !OPENAI_API_KEY) return fallback();
+
+  // Try OpenAI; if anything goes wrong, fallback safely.
+  try {
+    const prompt =
+`You are a marketing copywriter. Create a short social caption in ~2-3 lines for the post TITLE and DATAPOINTS.
+Return STRICT JSON only: {"caption":"...","hashtags":"..."} with no markdown, no commentary.
+
+TITLE: ${title}
+DATAPOINTS:
+${(dataPoints || []).map(d => JSON.stringify(d)).join("\n")}
+CTA: Start a 7-day trial at tendermanagers.com
+Primary hashtags: #tenders #GeM #CPPP #MSME #procurement`;
+
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0.5,
+        messages: [
+          { role: "system", content: "Respond with strict JSON. No markdown. No extra text." },
+          { role: "user", content: prompt }
+        ]
+      })
+    });
+
+    if (!r.ok) {
+      // If you hit 429 etc., fall back
+      return fallback();
+    }
+
+    const body = await r.json();
+    const txt = body?.choices?.[0]?.message?.content?.trim() || "";
+    // Model should have returned JSON. Parse defensively.
+    let parsed;
+    try {
+      parsed = JSON.parse(txt);
+    } catch {
+      return fallback();
+    }
+
+    if (!parsed || typeof parsed !== "object" || !parsed.caption) return fallback();
+    if (!parsed.hashtags) parsed.hashtags = "#tenders #GeM #CPPP #MSME #procurement";
+    return parsed;
+  } catch {
+    return fallback();
+  }
 }

@@ -58,11 +58,17 @@ export async function askAndDraft(prompt) {
 
   const out = [];
   for (const it of items) {
-    const cap = await generateCaption({ title: it.title, dataPoints: it.data });
-    const payload = { caption: cap.caption, hashtags: cap.hashtags || "#tenders #GeM #CPPP #MSME #procurement" };
+    const capOut = await generateCaption({ title: it.title, dataPoints: it.data });
+    const caption  = typeof capOut === "string" ? capOut : (capOut?.caption || "");
+    const hashtags = typeof capOut === "string" ? "#tenders #GeM #CPPP #MSME #procurement" : (capOut?.hashtags || "#tenders #GeM #CPPP #MSME #procurement");
+
+    const payload = { caption, hashtags };
 
     if (it.type === "reel") {
-      const script = await reelScript({ topic: it.title, bullets: it.data?.map(d => `${d.label}: ${d.spend || d.orders||""}`) || [] });
+      const script = await reelScript({
+        topic: it.title,
+        bullets: it.data?.map(d => `${d.label}: ${d.spend || d.orders || ""}`) || []
+      });
       payload.reelScript = script.script;
     }
 
@@ -71,10 +77,12 @@ export async function askAndDraft(prompt) {
       title: it.title,
       data: it.data,
       payload,
-      status: "generated",     // ready for /queue → /publish
+      status: "generated",
       createdAt: Date.now()
     });
+
     out.push({ id: ref.id, ...it, payload });
   }
+
   return out;
 }

@@ -1,10 +1,20 @@
 // src/dataAdapters/tenders.js
-// Re-export caption writer from ai.js
-export { generateCaption } from "../ai.js";
+import { generateCaption as gen } from "../ai.js";
 
-// Provide a simple reelScript so current imports don't crash.
-// You can replace with your fancy version later.
-export async function reelScript({ topic = "", bullets = [] }) {
+// Always return an object with caption + hashtags
+export async function generateCaption(args = {}) {
+  const out = await gen(args);
+  if (typeof out === "string") {
+    return { caption: out, hashtags: "#tenders #GeM #CPPP #MSME #procurement" };
+  }
+  return {
+    caption: out?.caption || "",
+    hashtags: out?.hashtags || "#tenders #GeM #CPPP #MSME #procurement"
+  };
+}
+
+// Simple reel script helper so imports never break
+export async function reelScript({ topic = "", bullets = [] } = {}) {
   const lines = [
     `Hook: ${topic}`,
     ...bullets.map(b => `• ${b}`),
@@ -12,4 +22,3 @@ export async function reelScript({ topic = "", bullets = [] }) {
   ];
   return { script: lines.join("\n") };
 }
-

@@ -72,13 +72,18 @@ app.post('/ads/draft', async (req, res) => {
 app.post("/ask", async (req, res) => {
   try {
     const { prompt } = req.body || {};
+    const { askAndDraft } = await import("./workflows/nlpAsk.js");
+
     const drafted = await askAndDraft(prompt || "Top categories please");
-    res.json({ ok: true, drafted });
+
+    // 🔒 Always JSON (never send raw text/markdown)
+    res.status(200).json({ ok: true, drafted });
   } catch (e) {
     console.error("ASK error", e);
-    res.status(500).json({ ok: false, error: String(e.message || e) });
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
+
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => console.log('TM Growth Agent running on', PORT));
