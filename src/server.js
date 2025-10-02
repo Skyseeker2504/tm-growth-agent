@@ -7,6 +7,7 @@ import { doPlanning } from './workflows/plan.js';
 import { generateContent } from './workflows/generate.js';
 import { queueForPublish, publishDue } from './workflows/schedule.js';
 import { draftEngagementAd } from './workflows/ads.js';
+import { askAndDraft } from "./workflows/nlpAsk.js";
 
 const app = express();
 app.use(cors());
@@ -64,6 +65,17 @@ app.post('/ads/draft', async (req, res) => {
     res.json({ ok: true, created: ids });
   } catch (e) {
     console.error('ADS error', e);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+app.post("/ask", async (req, res) => {
+  try {
+    const { prompt } = req.body || {};
+    const drafted = await askAndDraft(prompt || "Top categories please");
+    res.json({ ok: true, drafted });
+  } catch (e) {
+    console.error("ASK error", e);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
