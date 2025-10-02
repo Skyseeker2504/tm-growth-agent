@@ -1,26 +1,33 @@
+// src/workflows/discover.js
 import { col } from "../dataAdapters/firestore.js";
 import { listTables, tableSchema, quickStats } from "../dataAdapters/dataExec.js";
 import { suggestInsights } from "../ai.js";
 
 export async function runDiscovery({ maxTables = 10 } = {}) {
-  const tables = (await listTables()).slice(0, maxTables);
+  const names = (await listTables()).slice(0, maxTables);
 
   const profile = [];
-  for (const name of tables) {
-    const schema = await tableSchema(name);
-    const stats  = await quickStats(name);
-    profile.push({ table: name, schema, stats });
+  for (const name of names) {
+    try {
+      const schema = await tableSchema(name);    // returns [] on failure
+      const stats  = await quickStats(name);     // never throws
+      profile.push({ table: name, schema, stats });
+    } catch (e) {
+      // Shouldn’t hit due to guards, but just in case
+      profile.push({ table: name, schema: [], stats: { error: String(e?.message || e) } });
+    }
   }
 
-  // Ask AI to propose what’s possible
-  const suggestions = await suggestInsights({ profile });
+  let suggestions = { ideas: [], questions: [], content: [] };
+  try {
+    suggestions = await suggestInsights({ profile });
+  } catch (e) {
+    console.warn("suggestInsights failed:", e?.message || e);
+  }
 
-  // persist for later use (catalog + suggestions)
-  const catRef = await col("catalog").add({
-    profile,
-    suggestions,
-    createdAt: Date.now()
+  const ref = await col("catalog").add({
+    profile, suggestions, createdAt: Date.now()
   });
 
-  return { id: catRef.id, profileCount: profile.length, suggestions };
+  return { id: ref.id, profileCount: profile.length, suggestions };
 }
